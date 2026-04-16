@@ -9,9 +9,12 @@ import { errorHandler } from './middleware/errorHandler.js';
 const app = express();
 const PORT = 3001;
 
+// 用 process.cwd() 定位 server/ 目录（dev 和 serve 都从 server/ 运行）
+const SERVER_ROOT = process.cwd();
+
 // 确保临时目录存在
 const dirs = ['uploads', 'chunks', 'compressed'].map((d) =>
-  path.resolve(import.meta.dirname, '..', d)
+  path.resolve(SERVER_ROOT, d)
 );
 dirs.forEach((dir) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -28,7 +31,7 @@ app.use('/api/upload', uploadRouter);
 app.use('/api', compressRouter);
 
 // 生产模式托管前端静态资源
-const clientDist = path.resolve(import.meta.dirname, '../../client/dist');
+const clientDist = path.resolve(SERVER_ROOT, '../client/dist');
 if (fs.existsSync(clientDist)) {
   app.use(express.static(clientDist));
   app.get('*', (_req, res) => {

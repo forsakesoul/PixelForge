@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import path from 'path';
 import fs from 'fs';
-import type { ApiResponse, CompressRequest, CompressResponse } from '@shared/types.js';
-import { COMPRESS_LEVEL_PRESETS } from '@shared/types.js';
+import type { ApiResponse, CompressRequest, CompressResponse } from '../../../shared/types.js';
+import { COMPRESS_LEVEL_PRESETS } from '../../../shared/types.js';
 import { compressImage } from '../services/compressService.js';
 import { UPLOAD_DIR, COMPRESSED_DIR } from '../index.js';
 

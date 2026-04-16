@@ -7,8 +7,8 @@ import type {
   CompressResponse,
   OutputFormat,
   CompressLevelPreset,
-} from '@shared/types.js';
-import { COMPRESS_LEVEL_PRESETS } from '@shared/types.js';
+} from '../../../shared/types.js';
+import { COMPRESS_LEVEL_PRESETS } from '../../../shared/types.js';
 
 interface CompressOptions {
   request: CompressRequest;

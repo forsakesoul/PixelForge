@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import sharp from 'sharp';
 import fs from 'fs';
-import type { ApiResponse, ChunkStatusResponse, ChunkUploadResponse, MergeChunksRequest, MergeChunksResponse } from '@shared/types.js';
+import type { ApiResponse, ChunkStatusResponse, ChunkUploadResponse, MergeChunksRequest, MergeChunksResponse } from '../../../shared/types.js';
 import { getUploadedChunks, isFileComplete, getChunkDir, mergeChunks } from '../services/chunkService.js';
 import { UPLOAD_DIR } from '../index.js';
 
