@@ -1,0 +1,10 @@
+{
+  "name": "compress-img",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "npm run server:dev & npm run client:dev",
+    "client:dev": "cd client && npm run dev",
+    "server:dev": "cd server && npm run dev"
+  }
+}

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { UploadArea } from './components/UploadArea';
 import { CompressOptions } from './components/CompressOptions';
 import { ImagePreview } from './components/ImagePreview';
@@ -16,6 +16,7 @@ function App() {
   const [compressResult, setCompressResult] = useState<CompressResponse | null>(null);
   const [compressing, setCompressing] = useState(false);
   const { toasts, show, close, update } = useToast();
+  const downloadToastIdRef = useRef<number>(0);
 
   const handleUploadStart = useCallback(
     (filename: string) => {
@@ -70,21 +71,20 @@ function App() {
   };
 
   const handleDownloadStart = useCallback(() => {
-    show('loading', '正在准备下载...', 0);
+    downloadToastIdRef.current = show('loading', '正在准备下载...', 0);
   }, [show]);
 
   const handleDownloadComplete = useCallback(() => {
-    // 关闭 loading，显示成功
-    close(toasts.find((t) => t.type === 'loading')?.id ?? 0);
+    close(downloadToastIdRef.current);
     show('success', '下载完成');
-  }, [show, close, toasts]);
+  }, [show, close]);
 
   const handleDownloadError = useCallback(
     (message: string) => {
-      close(toasts.find((t) => t.type === 'loading')?.id ?? 0);
+      close(downloadToastIdRef.current);
       show('error', `下载失败: ${message}`, 3000);
     },
-    [show, close, toasts]
+    [show, close]
   );
 
   return (
