@@ -1,9 +1,12 @@
 {
-  "name": "compress-img",
+  "name": "pixel-forge",
   "version": "1.0.0",
   "private": true,
+  "description": "PixelForge - A local-first media toolkit. Compress, transform, and forge your images with ease.",
   "scripts": {
     "start": "npm run server:dev & npm run client:dev",
+    "build": "cd client && npm run build && cd ../server && npm run build",
+    "serve": "cd server && npm start",
     "client:dev": "cd client && npm run dev",
     "server:dev": "cd server && npm run dev"
   }

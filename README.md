@@ -1,8 +1,8 @@
-# CompressImg - 图片压缩服务技术文档
+# PixelForge - 本地媒体处理工具箱
 
 ## 一、项目概述
 
-基于 React + Express + TypeScript 的本地图片压缩服务，支持大文件断点续传上传与多格式图片压缩。
+PixelForge 是一个基于 React + Express + TypeScript 的本地优先媒体处理工具箱。当前支持大文件断点续传上传与多格式多档位图片压缩，未来将扩展更多媒体处理能力。
 
 ## 二、技术选型
 
