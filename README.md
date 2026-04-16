@@ -71,6 +71,15 @@ PixelForge/
 - 断点续传方案设计
 - 踩坑点与解决方案
 
+## Contributors
+
+| | Name | Role |
+|---|------|------|
+| <img src="https://github.com/forsakesoul.png" width="40" /> | [@forsakesoul](https://github.com/forsakesoul) | Creator |
+| <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Anthropic_logo.svg/180px-Anthropic_logo.svg.png" width="40" /> | Claude Code (Opus 4.6) | AI Pair Programmer |
+
+> Built with [Claude Code](https://claude.ai/claude-code) - Anthropic's AI coding assistant.
+
 ## License
 
 [MIT](LICENSE)
