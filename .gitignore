@@ -1,0 +1,23 @@
+node_modules/
+dist/
+.env
+.env.local
+
+# 上传临时文件
+server/uploads/
+server/chunks/
+server/compressed/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
