@@ -15,6 +15,21 @@ PixelForge 是一个本地优先的媒体处理工具箱，基于 React + Expres
 
 ## Quick Start
 
+推荐使用 `setup.sh` 一键管理：
+
+```bash
+# 交互式菜单（选择安装/开发/构建/部署）
+./setup.sh
+
+# 或直接传参
+./setup.sh install   # 安装全部依赖（已安装则跳过）
+./setup.sh dev       # 自动安装 + 启动开发模式
+./setup.sh build     # 自动安装 + 构建生产版本
+./setup.sh serve     # 启动生产服务（无构建产物时自动先 build）
+```
+
+也可以手动操作：
+
 ```bash
 # 安装依赖
 cd client && npm install && cd ../server && npm install && cd ..
@@ -30,6 +45,9 @@ open http://localhost:5173
 
 | 命令 | 说明 |
 |------|------|
+| `./setup.sh` | 交互式菜单，引导安装/开发/构建/部署 |
+| `./setup.sh dev` | 自动安装依赖 + 启动开发模式 |
+| `./setup.sh serve` | 自动构建 + 启动生产服务 |
 | `npm start` | 同时启动前后端开发服务 |
 | `npm run client:dev` | 仅启动前端 (Vite :5173) |
 | `npm run server:dev` | 仅启动后端 (Express :3001) |
@@ -70,15 +88,6 @@ PixelForge/
 - 压缩档位参数对照表
 - 断点续传方案设计
 - 踩坑点与解决方案
-
-## Contributors
-
-| | Name | Role |
-|---|------|------|
-| <img src="https://github.com/forsakesoul.png" width="40" /> | [@forsakesoul](https://github.com/forsakesoul) | Creator |
-| <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Anthropic_logo.svg/180px-Anthropic_logo.svg.png" width="40" /> | Claude Code (Opus 4.6) | AI Pair Programmer |
-
-> Built with [Claude Code](https://claude.ai/claude-code) - Anthropic's AI coding assistant.
 
 ## License
 
