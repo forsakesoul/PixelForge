@@ -55,6 +55,7 @@ export interface MergeChunksResponse {
   width: number;
   height: number;
   mimeType: string;
+  expiresAt: number; // Unix ms; 0 表示无过期
 }
 
 // ========================
@@ -144,6 +145,22 @@ export interface CompressResponse {
   level: CompressLevel;
   previewUrl: string;
   downloadUrl: string;
+  expiresAt: number; // Unix ms; 0 表示无过期
+}
+
+// ========================
+// 存储配额
+// ========================
+
+export interface QuotaResponse {
+  driver: 'fs' | 'blob';
+  usedBytes: number;
+  limitBytes: number;
+  usedRatio: number;       // 0-1
+  available: boolean;      // intendedBytes 能否容纳
+  intendedBytes: number;   // 请求时携带的预期占用
+  fileTtlMs: number;       // 当前驱动的默认 TTL
+  maxFileSize: number;     // 单文件大小上限
 }
 
 // ========================

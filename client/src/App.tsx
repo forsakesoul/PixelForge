@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { UploadArea } from './components/UploadArea';
 import { CompressOptions } from './components/CompressOptions';
 import { ImagePreview } from './components/ImagePreview';
+import { QuotaBar } from './components/QuotaBar';
 import { Toast } from './components/Toast';
 import { useToast } from './hooks/useToast';
 import type {
@@ -15,6 +16,7 @@ function App() {
   const [uploadInfo, setUploadInfo] = useState<MergeChunksResponse | null>(null);
   const [compressResult, setCompressResult] = useState<CompressResponse | null>(null);
   const [compressing, setCompressing] = useState(false);
+  const [quotaRefresh, setQuotaRefresh] = useState(0);
   const { toasts, show, close, update } = useToast();
   const downloadToastIdRef = useRef<number>(0);
 
@@ -29,6 +31,7 @@ function App() {
     (result: MergeChunksResponse) => {
       setUploadInfo(result);
       setCompressResult(null);
+      setQuotaRefresh((n) => n + 1);
       show('success', `上传成功: ${result.filename} (${formatSize(result.fileSize)})`);
     },
     [show]
@@ -57,6 +60,7 @@ function App() {
         return;
       }
       setCompressResult(json.data);
+      setQuotaRefresh((n) => n + 1);
       const saved = ((1 - json.data.ratio) * 100).toFixed(1);
       update(toastId, {
         type: 'success',
@@ -92,6 +96,8 @@ function App() {
       <Toast toasts={toasts} onClose={close} />
 
       <h1 style={{ textAlign: 'center', marginBottom: 32 }}>PixelForge</h1>
+
+      <QuotaBar refreshKey={quotaRefresh} />
 
       <UploadArea
         onUploadComplete={handleUploadComplete}

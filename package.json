@@ -6,9 +6,24 @@
   "scripts": {
     "start": "npm run server:dev & npm run client:dev",
     "build": "cd client && npm run build && cd ../server && npm run build",
+    "build:vercel": "cd client && npm run build && cd ../server && npm run build",
     "install": "cd client && npm install && cd ../server && npm install",
     "serve": "cd server && npm start",
     "client:dev": "cd client && npm run dev",
-    "server:dev": "cd server && npm run dev"
+    "server:dev": "cd server && npm run dev",
+    "deploy": "vercel --prod",
+    "deploy:preview": "vercel",
+    "cleanup:local": "node scripts/cleanup-local.mjs",
+    "quota:check": "node scripts/quota-check.mjs",
+    "blob:ls": "node scripts/blob-ls.mjs",
+    "blob:clear": "node scripts/blob-clear.mjs",
+    "blob:clear:expired": "node scripts/blob-clear.mjs --expired-only --confirm"
+  },
+  "dependencies": {
+    "@vercel/blob": "^0.27.0",
+    "serverless-http": "^3.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.0"
   }
 }

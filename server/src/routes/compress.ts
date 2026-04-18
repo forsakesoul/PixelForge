@@ -1,10 +1,15 @@
 import { Router } from 'express';
 import path from 'path';
-import fs from 'fs';
-import type { ApiResponse, CompressRequest, CompressResponse } from '../../../shared/types.js';
+import type {
+  ApiResponse,
+  CompressRequest,
+  CompressResponse,
+} from '../../../shared/types.js';
 import { COMPRESS_LEVEL_PRESETS } from '../../../shared/types.js';
 import { compressImage } from '../services/compressService.js';
-import { UPLOAD_DIR, COMPRESSED_DIR } from '../index.js';
+import { findExistingOriginal } from '../services/chunkService.js';
+import { createStorage, STORAGE_KEYS } from '../storage/index.js';
+import { isExpired } from '../utils/ttl.js';
 
 export const compressRouter = Router();
 
@@ -31,27 +36,39 @@ compressRouter.post('/compress', async (req, res, next) => {
     return;
   }
 
-  // 查找已上传的文件
-  const files = fs.readdirSync(UPLOAD_DIR);
-  const target = files.find((f) => f.startsWith(fileId + '_'));
-  if (!target) {
-    res.status(404).json({
-      code: 404,
-      message: 'File not found. Please upload first.',
-      data: null,
-    } satisfies ApiResponse<null>);
-    return;
-  }
-
-  const inputPath = path.join(UPLOAD_DIR, target);
-  const originalSize = fs.statSync(inputPath).size;
-
   try {
+    const storage = createStorage();
+    const original = await findExistingOriginal({ storage }, fileId);
+    if (!original) {
+      res.status(404).json({
+        code: 404,
+        message: 'File not found. Please upload first.',
+        data: null,
+      } satisfies ApiResponse<null>);
+      return;
+    }
+    if (isExpired(original, Date.now())) {
+      // 主动清理过期资源
+      await storage.delete(original.key);
+      res.status(410).json({
+        code: 410,
+        message: 'Original file expired. Please re-upload.',
+        data: null,
+      } satisfies ApiResponse<null>);
+      return;
+    }
+
+    const filename = path.basename(original.key).slice(fileId.length + 1);
+    const inputBuffer = await storage.get(original.key);
+
     const result = await compressImage({
+      storage,
       request: body,
-      inputPath,
-      originalSize,
+      inputBuffer,
+      originalSize: original.size,
+      filename,
     });
+
     res.json({
       code: 0,
       message: 'ok',
@@ -63,38 +80,42 @@ compressRouter.post('/compress', async (req, res, next) => {
 });
 
 // GET /api/preview/:fileId
-compressRouter.get('/preview/:fileId', (req, res) => {
-  const { fileId } = req.params;
-  const type = (req.query.type as string) || 'compressed';
-
-  const filePath = findFile(fileId, type);
-  if (!filePath) {
-    res.status(404).json({ code: 404, message: 'File not found', data: null });
-    return;
-  }
-
-  res.sendFile(filePath);
+compressRouter.get('/preview/:fileId', async (req, res, next) => {
+  await serveFile(req.params.fileId, (req.query.type as string) || 'compressed', res, false, next);
 });
 
 // GET /api/download/:fileId
-compressRouter.get('/download/:fileId', (req, res) => {
-  const { fileId } = req.params;
-  const type = (req.query.type as string) || 'compressed';
-
-  const filePath = findFile(fileId, type);
-  if (!filePath) {
-    res.status(404).json({ code: 404, message: 'File not found', data: null });
-    return;
-  }
-
-  const basename = path.basename(filePath);
-  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(basename)}"`);
-  res.sendFile(filePath);
+compressRouter.get('/download/:fileId', async (req, res, next) => {
+  await serveFile(req.params.fileId, (req.query.type as string) || 'compressed', res, true, next);
 });
 
-function findFile(fileId: string, type: string): string | null {
-  const dir = type === 'original' ? UPLOAD_DIR : COMPRESSED_DIR;
-  if (!fs.existsSync(dir)) return null;
-  const match = fs.readdirSync(dir).find((f) => f.startsWith(fileId));
-  return match ? path.join(dir, match) : null;
+async function serveFile(
+  fileId: string,
+  type: string,
+  res: import('express').Response,
+  asDownload: boolean,
+  next: import('express').NextFunction
+) {
+  try {
+    const storage = createStorage();
+    const prefix =
+      type === 'original'
+        ? STORAGE_KEYS.originalPrefix(fileId)
+        : STORAGE_KEYS.compressedPrefix(fileId);
+    const matches = await storage.list(prefix);
+    if (matches.length === 0) {
+      res.status(404).json({ code: 404, message: 'File not found', data: null });
+      return;
+    }
+    matches.sort((a, b) => b.uploadedAt - a.uploadedAt);
+    const meta = matches[0];
+    if (isExpired(meta, Date.now())) {
+      await storage.delete(meta.key);
+      res.status(410).json({ code: 410, message: 'File expired', data: null });
+      return;
+    }
+    storage.serve(res, meta, { asDownload, filename: path.basename(meta.key) });
+  } catch (err) {
+    next(err);
+  }
 }
