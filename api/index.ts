@@ -8,11 +8,21 @@ const app = createApp({ serveClient: false });
 const handler = serverless(app);
 
 export default async function vercelHandler(req: IncomingMessage, res: ServerResponse) {
-  return handler(req, res);
+  try {
+    return await handler(req, res);
+  } catch (err) {
+    // 关键：把函数级异常输出到 Vercel Logs，避免只看到笼统的 500
+    console.error('[api/index] handler error:', err);
+    if (!res.headersSent) {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(
+        JSON.stringify({
+          code: 500,
+          message: (err as Error).message ?? 'Internal Server Error',
+          data: null,
+        })
+      );
+    }
+  }
 }
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};

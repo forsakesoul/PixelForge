@@ -2,6 +2,7 @@
   "name": "pixel-forge",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "PixelForge - A local-first media toolkit. Compress, transform, and forge your images with ease.",
   "scripts": {
     "start": "npm run server:dev & npm run client:dev",
