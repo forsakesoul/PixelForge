@@ -1,74 +1,101 @@
-import fs from 'fs';
-import path from 'path';
-import { CHUNK_DIR, UPLOAD_DIR } from '../index.js';
+import type { StorageAdapter, StorageObject } from '../storage/index.js';
+import { STORAGE_KEYS } from '../storage/index.js';
 
-export function getUploadedChunks(hash: string): number[] {
-  const chunkDir = path.join(CHUNK_DIR, hash);
-  if (!fs.existsSync(chunkDir)) return [];
-  return fs
-    .readdirSync(chunkDir)
-    .filter((f) => f.startsWith('chunk-'))
-    .map((f) => parseInt(f.split('-')[1], 10))
-    .sort((a, b) => a - b);
+export interface ChunkServiceContext {
+  storage: StorageAdapter;
 }
 
-export function isFileComplete(hash: string): boolean {
-  const files = fs.readdirSync(UPLOAD_DIR);
-  return files.some((f) => f.startsWith(hash + '_'));
+export async function getUploadedChunks(
+  ctx: ChunkServiceContext,
+  hash: string
+): Promise<number[]> {
+  const objs = await ctx.storage.list(STORAGE_KEYS.chunkPrefix(hash));
+  const indexes: number[] = [];
+  for (const obj of objs) {
+    const tail = obj.key.slice(STORAGE_KEYS.chunkPrefix(hash).length);
+    const idx = parseInt(tail, 10);
+    if (!isNaN(idx)) indexes.push(idx);
+  }
+  return indexes.sort((a, b) => a - b);
 }
 
-export function getChunkDir(hash: string): string {
-  const dir = path.join(CHUNK_DIR, hash);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  return dir;
+export async function findExistingOriginal(
+  ctx: ChunkServiceContext,
+  hash: string
+): Promise<StorageObject | null> {
+  const matches = await ctx.storage.list(STORAGE_KEYS.originalPrefix(hash));
+  if (matches.length === 0) return null;
+  // 取最新的一个
+  matches.sort((a, b) => b.uploadedAt - a.uploadedAt);
+  return matches[0];
+}
+
+export async function putChunk(
+  ctx: ChunkServiceContext,
+  hash: string,
+  index: number,
+  buf: Buffer
+): Promise<void> {
+  await ctx.storage.put(STORAGE_KEYS.chunk(hash, index), buf, {
+    contentType: 'application/octet-stream',
+  });
 }
 
 export async function mergeChunks(
+  ctx: ChunkServiceContext,
   hash: string,
   filename: string,
   totalChunks: number,
-  expectedSize: number
-): Promise<string> {
-  const chunkDir = path.join(CHUNK_DIR, hash);
-  const outputPath = path.join(UPLOAD_DIR, `${hash}_${filename}`);
+  expectedSize: number,
+  mimeType: string
+): Promise<{ key: string; meta: StorageObject; buffer: Buffer }> {
+  if (expectedSize > ctx.storage.maxFileSize) {
+    throw new Error(
+      `File too large: ${expectedSize} > ${ctx.storage.maxFileSize}`
+    );
+  }
 
-  // 检查分片完整性
-  const existing = getUploadedChunks(hash);
+  const existing = await getUploadedChunks(ctx, hash);
   if (existing.length !== totalChunks) {
     throw new Error(
       `Chunks incomplete: expected ${totalChunks}, got ${existing.length}`
     );
   }
 
-  // 流式合并
-  const writeStream = fs.createWriteStream(outputPath);
+  // 顺序读取并 concat
+  const buffers: Buffer[] = [];
   for (let i = 0; i < totalChunks; i++) {
-    const chunkPath = path.join(chunkDir, `chunk-${i}`);
-    if (!fs.existsSync(chunkPath)) {
-      writeStream.destroy();
-      throw new Error(`Missing chunk: ${i}`);
-    }
-    await new Promise<void>((resolve, reject) => {
-      const readStream = fs.createReadStream(chunkPath);
-      readStream.pipe(writeStream, { end: false });
-      readStream.on('end', resolve);
-      readStream.on('error', reject);
-    });
+    const buf = await ctx.storage.get(STORAGE_KEYS.chunk(hash, i));
+    buffers.push(buf);
   }
-  writeStream.end();
-  await new Promise<void>((resolve) => writeStream.on('finish', resolve));
+  const merged = Buffer.concat(buffers);
 
-  // 校验文件大小
-  const stat = fs.statSync(outputPath);
-  if (stat.size !== expectedSize) {
-    fs.unlinkSync(outputPath);
+  if (merged.length !== expectedSize) {
     throw new Error(
-      `File size mismatch: expected ${expectedSize}, got ${stat.size}`
+      `File size mismatch: expected ${expectedSize}, got ${merged.length}`
     );
   }
 
-  // 清理分片
-  fs.rmSync(chunkDir, { recursive: true, force: true });
+  const key = STORAGE_KEYS.original(hash, filename);
+  const meta = await ctx.storage.put(key, merged, {
+    contentType: mimeType,
+    filename,
+  });
 
-  return outputPath;
+  // 异步清理分片，不阻塞响应
+  void deleteChunks(ctx, hash).catch((err) =>
+    console.warn(`[chunkService] cleanup chunks failed for ${hash}:`, err)
+  );
+
+  return { key, meta, buffer: merged };
+}
+
+export async function deleteChunks(
+  ctx: ChunkServiceContext,
+  hash: string
+): Promise<void> {
+  const objs = await ctx.storage.list(STORAGE_KEYS.chunkPrefix(hash));
+  for (const obj of objs) {
+    await ctx.storage.delete(obj.key);
+  }
 }

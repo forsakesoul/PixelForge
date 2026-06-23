@@ -8,6 +8,9 @@ server/uploads/
 server/chunks/
 server/compressed/
 
+# Vercel
+.vercel/
+
 # IDE
 .vscode/
 .idea/

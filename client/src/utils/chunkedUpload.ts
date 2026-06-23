@@ -4,6 +4,7 @@ import type {
   ChunkUploadResponse,
   MergeChunksRequest,
   MergeChunksResponse,
+  QuotaResponse,
   SupportedMimeType,
   UploadProgress,
   UploadStatus,
@@ -62,6 +63,14 @@ async function checkStatus(
   return json.data;
 }
 
+export async function fetchQuota(intendedBytes = 0): Promise<QuotaResponse> {
+  const params = new URLSearchParams({ intendedBytes: String(intendedBytes) });
+  const res = await fetch(`/api/quota?${params}`);
+  const json: ApiResponse<QuotaResponse> = await res.json();
+  if (json.code !== 0) throw new Error(json.message);
+  return json.data;
+}
+
 async function uploadChunk(
   hash: string,
   index: number,
@@ -72,6 +81,10 @@ async function uploadChunk(
   formData.append('index', String(index));
   formData.append('chunk', chunk);
   const res = await fetch('/api/upload/chunk', { method: 'POST', body: formData });
+  if (res.status === 507) {
+    const json: ApiResponse<null> = await res.json().catch(() => ({ code: 507, message: '存储空间不足', data: null } as ApiResponse<null>));
+    throw new Error(json.message || '存储空间不足');
+  }
   const json: ApiResponse<ChunkUploadResponse> = await res.json();
   if (json.code !== 0) throw new Error(json.message);
   return json.data;
@@ -144,6 +157,18 @@ export async function chunkedUpload(
   };
 
   try {
+    // 0. 配额预检
+    updateStatus('checking');
+    const quota = await fetchQuota(file.size);
+    if (!quota.available) {
+      if (file.size > quota.maxFileSize) {
+        throw new Error(
+          `文件超过单文件上限 ${(quota.maxFileSize / 1024 / 1024).toFixed(0)}MB`
+        );
+      }
+      throw new Error('服务存储空间不足，请稍后再试');
+    }
+
     // 1. 计算 hash
     updateStatus('hashing');
     hash = await computeHash(file);

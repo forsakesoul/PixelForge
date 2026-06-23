@@ -1,0 +1,26 @@
+name: cleanup-expired-blobs
+
+on:
+  schedule:
+    # 每 5 分钟触发一次（GitHub Actions 实际有 ~3-15min 漂移，结合后端惰性清理兜底）
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call cleanup endpoint
+        env:
+          ENDPOINT: ${{ secrets.CLEANUP_ENDPOINT }}
+          SECRET: ${{ secrets.CLEANUP_SECRET }}
+        run: |
+          if [ -z "$ENDPOINT" ] || [ -z "$SECRET" ]; then
+            echo "Missing CLEANUP_ENDPOINT or CLEANUP_SECRET secret"
+            exit 1
+          fi
+          response=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -X POST "$ENDPOINT" \
+            -H "Authorization: Bearer $SECRET")
+          echo "HTTP $response"
+          cat /tmp/resp.json
+          [ "$response" = "200" ]

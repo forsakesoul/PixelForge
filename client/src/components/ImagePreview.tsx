@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { CompressResponse, MergeChunksResponse } from '@shared/types';
 
 type DownloadState = 'idle' | 'downloading' | 'done' | 'error';
@@ -19,22 +19,29 @@ export function ImagePreview({
   onDownloadError,
 }: Props) {
   const [downloadState, setDownloadState] = useState<DownloadState>('idle');
+  const expiresAt = compressResult?.expiresAt ?? 0;
+  const remainMs = useCountdown(expiresAt);
+  const expired = expiresAt > 0 && remainMs <= 0;
 
   const handleDownload = async () => {
     if (!compressResult || downloadState === 'downloading') return;
+    if (expired) {
+      onDownloadError?.('文件已过期，请重新压缩');
+      return;
+    }
 
     setDownloadState('downloading');
     onDownloadStart?.();
 
     try {
       const res = await fetch(compressResult.downloadUrl);
+      if (res.status === 410) throw new Error('文件已过期');
       if (!res.ok) throw new Error(`下载失败 (${res.status})`);
 
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
 
-      // 拼接下载文件名：原始文件名 + _compressed + 扩展名
       const ext = compressResult.format === 'jpeg' ? 'jpg' : compressResult.format;
       const baseName = uploadInfo.filename.replace(/\.[^.]+$/, '');
       a.download = `${baseName}_compressed.${ext}`;
@@ -44,7 +51,6 @@ export function ImagePreview({
 
       setDownloadState('done');
       onDownloadComplete?.();
-      // 2s 后恢复 idle，允许重复下载
       setTimeout(() => setDownloadState('idle'), 2000);
     } catch (err) {
       setDownloadState('error');
@@ -54,6 +60,7 @@ export function ImagePreview({
   };
 
   const downloadBtnText = () => {
+    if (expired) return '已过期';
     switch (downloadState) {
       case 'downloading': return '下载中...';
       case 'done': return '下载完成';
@@ -69,11 +76,13 @@ export function ImagePreview({
       color: '#fff',
       border: 'none',
       borderRadius: 6,
-      cursor: downloadState === 'downloading' ? 'wait' : 'pointer',
+      cursor: downloadState === 'downloading' || expired ? 'not-allowed' : 'pointer',
       fontSize: 14,
       fontWeight: 600,
       transition: 'all 0.2s',
+      opacity: expired ? 0.5 : 1,
     };
+    if (expired) return { ...base, background: '#bfbfbf' };
     switch (downloadState) {
       case 'downloading': return { ...base, background: '#faad14' };
       case 'done':        return { ...base, background: '#52c41a' };
@@ -127,8 +136,17 @@ export function ImagePreview({
                   ? `压缩了 ${((1 - compressResult.ratio) * 100).toFixed(1)}%`
                   : `文件增大了 ${((compressResult.ratio - 1) * 100).toFixed(1)}%（建议换格式或调高压缩档位）`}
               </p>
+              {expiresAt > 0 && (
+                <p style={{ color: expired ? '#ff4d4f' : '#faad14', fontWeight: 600 }}>
+                  {expired ? '文件已过期' : `剩余 ${formatRemain(remainMs)} 后过期`}
+                </p>
+              )}
             </div>
-            <button onClick={handleDownload} disabled={downloadState === 'downloading'} style={downloadBtnStyle()}>
+            <button
+              onClick={handleDownload}
+              disabled={downloadState === 'downloading' || expired}
+              style={downloadBtnStyle()}
+            >
               {downloadBtnText()}
             </button>
           </div>
@@ -142,4 +160,22 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function formatRemain(ms: number): string {
+  if (ms <= 0) return '0:00';
+  const totalSec = Math.ceil(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function useCountdown(targetMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (targetMs <= 0) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [targetMs]);
+  return targetMs > 0 ? targetMs - now : 0;
 }

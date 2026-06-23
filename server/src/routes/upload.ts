@@ -1,24 +1,32 @@
 import { Router } from 'express';
 import multer from 'multer';
-import path from 'path';
 import sharp from 'sharp';
-import fs from 'fs';
-import type { ApiResponse, ChunkStatusResponse, ChunkUploadResponse, MergeChunksRequest, MergeChunksResponse } from '../../../shared/types.js';
-import { getUploadedChunks, isFileComplete, getChunkDir, mergeChunks } from '../services/chunkService.js';
-import { UPLOAD_DIR } from '../index.js';
+import type {
+  ApiResponse,
+  ChunkStatusResponse,
+  ChunkUploadResponse,
+  MergeChunksRequest,
+  MergeChunksResponse,
+} from '../../../shared/types.js';
+import {
+  getUploadedChunks,
+  findExistingOriginal,
+  mergeChunks,
+  putChunk,
+} from '../services/chunkService.js';
+import { createStorage } from '../storage/index.js';
+import { invalidateQuotaCache } from './quota.js';
 
 export const uploadRouter = Router();
 
-// multer 配置：分片临时存内存，手动写入磁盘
+// multer 内存存储 — 分片在内存中处理后写入存储层
 const upload = multer({
-  limits: { fileSize: 3 * 1024 * 1024 }, // 3MB，略大于 2MB 分片
+  limits: { fileSize: 4 * 1024 * 1024 }, // 4MB，留余量给 multipart overhead
+  storage: multer.memoryStorage(),
 });
 
-// 合并锁，防止同一文件并发合并
-const mergeLocks = new Set<string>();
-
 // GET /api/upload/status
-uploadRouter.get('/status', (req, res) => {
+uploadRouter.get('/status', async (req, res, next) => {
   const hash = req.query.hash as string;
   const totalChunks = parseInt(req.query.totalChunks as string, 10);
 
@@ -31,29 +39,34 @@ uploadRouter.get('/status', (req, res) => {
     return;
   }
 
-  // 先检查是否已有完整文件（秒传）
-  if (isFileComplete(hash)) {
+  try {
+    const storage = createStorage();
+    const existing = await findExistingOriginal({ storage }, hash);
+    if (existing) {
+      res.json({
+        code: 0,
+        message: 'ok',
+        data: {
+          uploadedChunks: Array.from({ length: totalChunks }, (_, i) => i),
+          isComplete: true,
+        },
+      } satisfies ApiResponse<ChunkStatusResponse>);
+      return;
+    }
+
+    const uploadedChunks = await getUploadedChunks({ storage }, hash);
     res.json({
       code: 0,
       message: 'ok',
-      data: {
-        uploadedChunks: Array.from({ length: totalChunks }, (_, i) => i),
-        isComplete: true,
-      },
+      data: { uploadedChunks, isComplete: false },
     } satisfies ApiResponse<ChunkStatusResponse>);
-    return;
+  } catch (err) {
+    next(err);
   }
-
-  const uploadedChunks = getUploadedChunks(hash);
-  res.json({
-    code: 0,
-    message: 'ok',
-    data: { uploadedChunks, isComplete: false },
-  } satisfies ApiResponse<ChunkStatusResponse>);
 });
 
 // POST /api/upload/chunk
-uploadRouter.post('/chunk', upload.single('chunk'), (req, res) => {
+uploadRouter.post('/chunk', upload.single('chunk'), async (req, res, next) => {
   const hash = req.body.hash as string;
   const index = parseInt(req.body.index, 10);
 
@@ -66,15 +79,17 @@ uploadRouter.post('/chunk', upload.single('chunk'), (req, res) => {
     return;
   }
 
-  const chunkDir = getChunkDir(hash);
-  const chunkPath = path.join(chunkDir, `chunk-${index}`);
-  fs.writeFileSync(chunkPath, req.file.buffer);
-
-  res.json({
-    code: 0,
-    message: 'ok',
-    data: { index },
-  } satisfies ApiResponse<ChunkUploadResponse>);
+  try {
+    const storage = createStorage();
+    await putChunk({ storage }, hash, index, req.file.buffer);
+    res.json({
+      code: 0,
+      message: 'ok',
+      data: { index },
+    } satisfies ApiResponse<ChunkUploadResponse>);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // POST /api/upload/merge
@@ -91,44 +106,61 @@ uploadRouter.post('/merge', async (req, res, next) => {
     return;
   }
 
-  // 秒传：文件已存在
-  const existingFile = fs.readdirSync(UPLOAD_DIR).find((f) => f.startsWith(hash + '_'));
-  if (existingFile) {
-    try {
-      const filePath = path.join(UPLOAD_DIR, existingFile);
-      const metadata = await sharp(filePath).metadata();
+  try {
+    const storage = createStorage();
+
+    // 单文件大小校验
+    if (fileSize > storage.maxFileSize) {
+      res.status(413).json({
+        code: 413,
+        message: `File too large: max ${storage.maxFileSize} bytes`,
+        data: null,
+      } satisfies ApiResponse<null>);
+      return;
+    }
+
+    // 配额校验（粗校验，前端应已先调用 /api/quota）
+    const used = await storage.usedBytes();
+    if (used + fileSize > storage.limitBytes) {
+      res.status(507).json({
+        code: 507,
+        message: 'Storage quota exceeded. Please retry later.',
+        data: null,
+      } satisfies ApiResponse<null>);
+      return;
+    }
+
+    // 秒传：原图已存在
+    const existing = await findExistingOriginal({ storage }, hash);
+    if (existing) {
+      const buf = await storage.get(existing.key);
+      const meta = await sharp(buf).metadata();
       res.json({
         code: 0,
         message: 'File already exists (instant upload)',
         data: {
           fileId: hash,
           filename,
-          fileSize: fs.statSync(filePath).size,
-          width: metadata.width ?? 0,
-          height: metadata.height ?? 0,
+          fileSize: existing.size,
+          width: meta.width ?? 0,
+          height: meta.height ?? 0,
           mimeType,
+          expiresAt: existing.expiresAt,
         },
       } satisfies ApiResponse<MergeChunksResponse>);
-    } catch (err) {
-      next(err);
+      return;
     }
-    return;
-  }
 
-  // 并发合并锁
-  if (mergeLocks.has(hash)) {
-    res.status(409).json({
-      code: 409,
-      message: 'Merge already in progress',
-      data: null,
-    } satisfies ApiResponse<null>);
-    return;
-  }
-
-  mergeLocks.add(hash);
-  try {
-    const outputPath = await mergeChunks(hash, filename, totalChunks, fileSize);
-    const metadata = await sharp(outputPath).metadata();
+    const merged = await mergeChunks(
+      { storage },
+      hash,
+      filename,
+      totalChunks,
+      fileSize,
+      mimeType
+    );
+    invalidateQuotaCache();
+    const meta = await sharp(merged.buffer).metadata();
 
     res.json({
       code: 0,
@@ -137,14 +169,13 @@ uploadRouter.post('/merge', async (req, res, next) => {
         fileId: hash,
         filename,
         fileSize,
-        width: metadata.width ?? 0,
-        height: metadata.height ?? 0,
+        width: meta.width ?? 0,
+        height: meta.height ?? 0,
         mimeType,
+        expiresAt: merged.meta.expiresAt,
       },
     } satisfies ApiResponse<MergeChunksResponse>);
   } catch (err) {
     next(err);
-  } finally {
-    mergeLocks.delete(hash);
   }
 });
