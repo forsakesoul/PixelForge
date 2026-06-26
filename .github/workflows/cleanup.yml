@@ -9,18 +9,52 @@ on:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      HAS_BLOB_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN != '' }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        if: env.HAS_BLOB_TOKEN == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install cleanup dependencies
+        if: env.HAS_BLOB_TOKEN == 'true'
+        run: npm ci --ignore-scripts
+
+      - name: Clear expired blobs
+        if: env.HAS_BLOB_TOKEN == 'true'
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+        run: npm run blob:clear:expired
+
       - name: Call cleanup endpoint
+        if: env.HAS_BLOB_TOKEN != 'true'
         env:
           ENDPOINT: ${{ secrets.CLEANUP_ENDPOINT }}
           SECRET: ${{ secrets.CLEANUP_SECRET }}
         run: |
           if [ -z "$ENDPOINT" ] || [ -z "$SECRET" ]; then
-            echo "Missing CLEANUP_ENDPOINT or CLEANUP_SECRET secret"
+            echo "::error::Missing cleanup configuration. Add BLOB_READ_WRITE_TOKEN, or add both CLEANUP_ENDPOINT and CLEANUP_SECRET."
             exit 1
           fi
-          response=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -X POST "$ENDPOINT" \
+
+          response=$(curl --show-error --silent --location -o /tmp/resp.json -w "%{http_code}" -X POST "$ENDPOINT" \
             -H "Authorization: Bearer $SECRET")
+          curl_status=$?
           echo "HTTP $response"
           cat /tmp/resp.json
-          [ "$response" = "200" ]
+          if [ "$curl_status" -ne 0 ]; then
+            echo "::error::Cleanup request failed before receiving a valid response"
+            exit "$curl_status"
+          fi
+          if [ "$response" != "200" ]; then
+            echo "::error::Cleanup endpoint returned HTTP $response"
+            exit 1
+          fi

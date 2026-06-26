@@ -207,8 +207,9 @@ compressed/{id}.{ext}__exp1734567890123
 
 | Secret | 值 |
 |--------|-----|
-| `CLEANUP_ENDPOINT` | 例：`https://yourapp.vercel.app/api/admin/cleanup` |
-| `CLEANUP_SECRET` | 与 Vercel 端一致 |
+| `BLOB_READ_WRITE_TOKEN` | 推荐。填 Vercel Blob 的读写 token，Actions 会直接执行 `npm run blob:clear:expired` |
+| `CLEANUP_ENDPOINT` | 可选回退。例：`https://yourapp.vercel.app/api/admin/cleanup` |
+| `CLEANUP_SECRET` | 可选回退。与 Vercel 端一致，必须和 `CLEANUP_ENDPOINT` 一起配置 |
 
 ## 九、新增的 npm 脚本
 
