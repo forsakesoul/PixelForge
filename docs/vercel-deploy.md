@@ -14,7 +14,7 @@
 | 压缩输入 | `sharp(filePath)` | `sharp(buffer)` |
 | 压缩输出 | `pipeline.toFile(...)` | `pipeline.toBuffer()` → `storage.put(...)` |
 | 预览/下载 URL | 本地路由 `/api/preview/:id` | fs 同上；Blob 直接返回公网 URL，省一次函数调用 |
-| 部署入口 | `node dist/.../index.js` | Express 仍由 `index.ts` 启动；Vercel 通过 `api/index.ts` + `serverless-http` 包装 |
+| 部署入口 | `node dist/.../index.js` | Express 仍由 `index.ts` 启动；Vercel 通过 `api/index.ts` 直接导出 handler |
 | 配额 | 无 | `/api/quota` + 上传前预检 + 服务端 507 兜底 |
 | 清理 | `setInterval`（仅本地） | 本地保留；Blob 由 GitHub Actions 每 5 分钟打 `/api/admin/cleanup`，配合读时惰性删除 |
 
@@ -23,7 +23,7 @@
 新增：
 
 ```
-api/index.ts                      # Vercel Function 入口（serverless-http 包装 Express）
+api/index.ts                      # Vercel Function 入口（直接调用 Express app）
 vercel.json                       # 路由 / 函数 / 构建配置
 .env.example                      # 环境变量示例
 .github/workflows/cleanup.yml     # GitHub Actions 定时器（5min）
@@ -59,7 +59,7 @@ server/src/services/chunkService.ts   # 走 storage 层；Buffer 合并
 server/src/services/compressService.ts# Buffer 输入/输出；走 storage 层
 server/src/routes/upload.ts       # 删 mergeLocks；加配额校验；用 storage
 server/src/routes/compress.ts     # 用 storage；preview/download 兼容 fs/blob
-server/package.json               # +@vercel/blob, +serverless-http, +@types/node
+server/package.json               # +@vercel/blob, +@types/node
 client/src/utils/chunkedUpload.ts # 上传前调 /api/quota；处理 507
 client/src/components/ImagePreview.tsx# expiresAt 倒计时；过期禁用下载
 client/src/App.tsx                # 引入 QuotaBar；上传/压缩后刷新用量
@@ -189,7 +189,7 @@ compressed/{id}.{ext}__exp1734567890123
 ```
 
 - `buildCommand` 串行构建 client 和 server。Server 的 `tsc` 输出 `server/dist/server/src/app.js`。
-- `api/index.ts` 显式 import 编译后的 JS：`from '../server/dist/server/src/app.js'`。
+- `api/index.ts` 动态 import Express app，并直接作为 Vercel Node handler 调用。
 - 所有 `/api/*` 请求 rewrite 到 `api/index`，由 Express 内部路由分发。
 - 函数内存 1024MB，时长 10s（Hobby 上限）。
 

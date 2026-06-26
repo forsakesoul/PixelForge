@@ -3,12 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "npm@11.13.0",
   "description": "PixelForge - A local-first media toolkit. Compress, transform, and forge your images with ease.",
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11"
+  },
   "scripts": {
     "start": "npm run server:dev & npm run client:dev",
     "build": "cd client && npm run build && cd ../server && npm run build",
     "build:vercel": "cd client && npm run build && cd ../server && npm run build",
-    "install": "cd client && npm install && cd ../server && npm install",
+    "bootstrap": "npm install --prefix client && npm install --prefix server",
     "serve": "cd server && npm start",
     "client:dev": "cd client && npm run dev",
     "server:dev": "cd server && npm run dev",
@@ -21,9 +26,9 @@
     "blob:clear:expired": "node scripts/blob-clear.mjs --expired-only --confirm"
   },
   "dependencies": {
-    "@vercel/blob": "^0.27.0"
+    "@vercel/blob": "^2.5.0"
   },
   "devDependencies": {
-    "@types/node": "^20.16.0"
+    "@types/node": "^24.13.2"
   }
 }
