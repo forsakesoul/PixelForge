@@ -32,7 +32,7 @@ PixelForge 是一个本地优先的媒体处理工具箱，基于 React + Expres
 
 ```bash
 # 安装依赖
-cd client && npm install && cd ../server && npm install && cd ..
+npm run bootstrap
 
 # 开发模式（前后端同时启动）
 npm start
@@ -48,6 +48,7 @@ open http://localhost:5173
 | `./setup.sh` | 交互式菜单，引导安装/开发/构建/部署 |
 | `./setup.sh dev` | 自动安装依赖 + 启动开发模式 |
 | `./setup.sh serve` | 自动构建 + 启动生产服务 |
+| `npm run bootstrap` | 安装前端和后端依赖 |
 | `npm start` | 同时启动前后端开发服务 |
 | `npm run client:dev` | 仅启动前端 (Vite :5173) |
 | `npm run server:dev` | 仅启动后端 (Express :3001) |
